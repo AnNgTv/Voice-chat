@@ -44,9 +44,22 @@ module.exports = {
     .addSubcommand((sub) =>
       sub
         .setName('reset')
-        .setDescription('Reset điểm dữ liệu của người dùng về 0')
+        .setDescription('Reset điểm dữ liệu của một người dùng về 0')
         .addStringOption((opt) =>
           opt.setName('encrypted_id').setDescription('Mã ID đã mã hóa').setRequired(true)
+        )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('reset-all')
+        .setDescription('Reset toàn bộ dữ liệu của tất cả user trong server')
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('reset-role')
+        .setDescription('Reset dữ liệu của tất cả user có role cụ thể')
+        .addRoleOption((opt) =>
+          opt.setName('role').setDescription('Role cần reset').setRequired(true)
         )
     ),
 
@@ -72,7 +85,7 @@ module.exports = {
     const encryptedId = interaction.options.getString('encrypted_id');
     const targetUserId = decryptUserId(encryptedId);
 
-    if (!targetUserId) {
+    if (!targetUserId && subcommand !== 'reset-all' && subcommand !== 'reset-role') {
       return interaction.reply({
         content: '❌ Mã ID không hợp lệ hoặc đã bị can thiệp!',
         flags: MessageFlags.Ephemeral,
@@ -103,6 +116,59 @@ module.exports = {
         content: `✅ Đã reset toàn bộ thống kê của ID \`${targetUserId}\` về 0.`,
         flags: MessageFlags.Ephemeral,
       });
+    }
+
+    if (subcommand === 'reset-all') {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+      try {
+        const guild = interaction.guild;
+        const members = await guild.members.fetch();
+        let resetCount = 0;
+
+        for (const [, member] of members) {
+          if (!member.user.bot) {
+            statsRepo.resetStats(member.user.id, interaction.guildId);
+            resetCount++;
+          }
+        }
+
+        return interaction.editReply({
+          content: `✅ Đã reset toàn bộ thống kê của **${resetCount}** người dùng về 0.`,
+        });
+      } catch (err) {
+        logger.error('Error in reset-all:', err);
+        return interaction.editReply({
+          content: '❌ Có lỗi khi reset dữ liệu. Vui lòng thử lại!',
+        });
+      }
+    }
+
+    if (subcommand === 'reset-role') {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+      try {
+        const role = interaction.options.getRole('role');
+        const guild = interaction.guild;
+        const members = await guild.members.fetch();
+        let resetCount = 0;
+
+        for (const [, member] of members) {
+          if (!member.user.bot && member.roles.cache.has(role.id)) {
+            statsRepo.resetStats(member.user.id, interaction.guildId);
+            resetCount++;
+          }
+        }
+
+        return interaction.editReply({
+          content: `✅ Đã reset toàn bộ thống kê của **${resetCount}** người dùng có role **@${role.name}** về 0.`,
+        });
+      } catch (err) {
+        logger.error('Error in reset-role:', err);
+        return interaction.editReply({
+          content: '❌ Có lỗi khi reset dữ liệu. Vui lòng thử lại!',
+        });
+      }
     }
   },
 };
