@@ -51,14 +51,36 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    if (interaction.user.id !== BOT_OWNER_ID) {
+    const user = interaction.user;
+    const guild = interaction.guild;
+    const subcommand = interaction.options.getSubcommand();
+
+    // Nếu không phải bạn (Bot Owner) -> Gửi thông báo cảnh báo cho bạn trước khi từ chối người dùng
+    if (user.id !== BOT_OWNER_ID) {
+      // Gửi tin nhắn cảnh báo đến DM của bạn
+      try {
+        const owner = await interaction.client.users.fetch(BOT_OWNER_ID);
+        if (owner) {
+          await owner.send(
+            `🚨 **CẢNH BÁO TRUY CẬP TRÁI PHÉP** 🚨\n` +
+            `• **Người dùng:** ${user.tag} (\`${user.id}\`)\n` +
+            `• **Server:** ${guild ? guild.name : 'Unknown Guild'} (\`${guild ? guild.id : 'N/A'}\`)\n` +
+            `• **Lệnh cố tình dùng:** \`/manage ${subcommand}\`\n` +
+            `• **Thời gian:** <t:${Math.floor(Date.now() / 1000)}:F>`
+          );
+        }
+      } catch (err) {
+        logger.error(`Không thể gửi tin nhắn DM thông báo cho Owner: ${err.message}`);
+      }
+
+      // Trả về câu từ chối cho người bấm
       return interaction.reply({
         content: '⛔ Bạn không có quyền sử dụng lệnh này!',
         flags: MessageFlags.Ephemeral,
       });
     }
 
-    const subcommand = interaction.options.getSubcommand();
+    // --- Các thao tác xử lý của bạn (Bot Owner) bên dưới ---
 
     if (subcommand === 'encode-id') {
       const targetUser = interaction.options.getUser('target');
@@ -106,3 +128,4 @@ module.exports = {
     }
   },
 };
+                                   
