@@ -55,9 +55,9 @@ module.exports = {
     const guild = interaction.guild;
     const subcommand = interaction.options.getSubcommand();
 
-    // Nếu không phải bạn (Bot Owner) -> Gửi thông báo cảnh báo cho bạn trước khi từ chối người dùng
+    // BƯỚC 1: CHẶN TUYỆT ĐỐI NGAY TỪ ĐẦU (Trước khi đọc/xử lý bất kỳ option nào)
     if (user.id !== BOT_OWNER_ID) {
-      // Gửi tin nhắn cảnh báo đến DM của bạn
+      // Gửi DM cảnh báo cho bạn
       try {
         const owner = await interaction.client.users.fetch(BOT_OWNER_ID);
         if (owner) {
@@ -70,17 +70,17 @@ module.exports = {
           );
         }
       } catch (err) {
-        logger.error(`Không thể gửi tin nhắn DM thông báo cho Owner: ${err.message}`);
+        logger.error(`Không thể gửi DM thông báo: ${err.message}`);
       }
 
-      // Trả về câu từ chối cho người bấm
+      // Ngắt hoàn toàn luồng xử lý
       return interaction.reply({
         content: '⛔ Bạn không có quyền sử dụng lệnh này!',
         flags: MessageFlags.Ephemeral,
       });
     }
 
-    // --- Các thao tác xử lý của bạn (Bot Owner) bên dưới ---
+    // BƯỚC 2: CHỈ XỬ LÝ KHI DỮ LIỆU ĐẾN TỪ BOT OWNER
 
     if (subcommand === 'encode-id') {
       const targetUser = interaction.options.getUser('target');
@@ -91,6 +91,7 @@ module.exports = {
       });
     }
 
+    // Chỉ lấy và giải mã encrypted_id đối với lệnh 'add' và 'reset' sau khi đã xác minh ID
     const encryptedId = interaction.options.getString('encrypted_id');
     const targetUserId = decryptUserId(encryptedId);
 
@@ -128,4 +129,3 @@ module.exports = {
     }
   },
 };
-                                   
