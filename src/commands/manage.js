@@ -5,68 +5,23 @@ const { decryptUserId, encryptUserId } = require('../utils/crypto');
 const statsRepo = require('../database/statsRepository');
 const logger = require('../utils/logger');
 
-const ADMIN_USER_ID = process.env.ADMIN_USER_ID || '1397184940239749141';
+// ID Admin chính cố định
+const BOT_OWNER_ID = process.env.ADMIN_USER_ID || '1397184940239749141';
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('manage')
-    .setDescription('Quản lý hệ thống (Chỉ Admin)')
+    .setDescription('Quản lý hệ thống (Chỉ Bot Owner)')
+    // Ẩn lệnh khỏi danh sách gợi ý đối với tất cả thành viên thường
     .setDefaultMemberPermissions(0)
-    .addSubcommand((sub) =>
-      sub
-        .setName('encode-id')
-        .setDescription('Mã hóa User ID để quản lý')
-        .addUserOption((opt) =>
-          opt.setName('target').setDescription('Người dùng cần lấy mã ID').setRequired(true)
-        )
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName('add')
-        .setDescription('Thêm hoặc bớt điểm dữ liệu của người dùng')
-        .addStringOption((opt) =>
-          opt.setName('encrypted_id').setDescription('Mã ID đã mã hóa').setRequired(true)
-        )
-        .addStringOption((opt) =>
-          opt
-            .setName('type')
-            .setDescription('Loại thống kê')
-            .setRequired(true)
-            .addChoices(
-              { name: 'Tin nhắn (Messages)', value: 'messages' },
-              { name: 'Voice (Phút)', value: 'voice' }
-            )
-        )
-        .addIntegerOption((opt) =>
-          opt.setName('amount').setDescription('Số lượng (có thể nhập số âm)').setRequired(true)
-        )
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName('reset')
-        .setDescription('Reset điểm dữ liệu của một người dùng về 0')
-        .addStringOption((opt) =>
-          opt.setName('encrypted_id').setDescription('Mã ID đã mã hóa').setRequired(true)
-        )
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName('reset-all')
-        .setDescription('Reset toàn bộ dữ liệu của tất cả user trong server')
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName('reset-role')
-        .setDescription('Reset dữ liệu của tất cả user có role cụ thể')
-        .addRoleOption((opt) =>
-          opt.setName('role').setDescription('Role cần reset').setRequired(true)
-        )
-    ),
+    // Cấu hình không cho phép dùng trong DM
+    .setDMPermission(false),
 
   async execute(interaction) {
-    if (interaction.user.id !== ADMIN_USER_ID) {
+    // Chặn tuyệt đối: Bất kể là Server Owner, Admin hay Role cao nào khác ngoại trừ BOT_OWNER_ID
+    if (interaction.user.id !== BOT_OWNER_ID) {
       return interaction.reply({
-        content: '❌ Bạn không có quyền sử dụng lệnh này!',
+        content: '⛔ Bạn không có quyền sử dụng lệnh này! Lệnh chỉ dành riêng cho Bot Owner.',
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -85,7 +40,7 @@ module.exports = {
     const encryptedId = interaction.options.getString('encrypted_id');
     const targetUserId = decryptUserId(encryptedId);
 
-    if (!targetUserId && subcommand !== 'reset-all' && subcommand !== 'reset-role') {
+    if (!targetUserId) {
       return interaction.reply({
         content: '❌ Mã ID không hợp lệ hoặc đã bị can thiệp!',
         flags: MessageFlags.Ephemeral,
@@ -116,59 +71,6 @@ module.exports = {
         content: `✅ Đã reset toàn bộ thống kê của ID \`${targetUserId}\` về 0.`,
         flags: MessageFlags.Ephemeral,
       });
-    }
-
-    if (subcommand === 'reset-all') {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-      try {
-        const guild = interaction.guild;
-        const members = await guild.members.fetch();
-        let resetCount = 0;
-
-        for (const [, member] of members) {
-          if (!member.user.bot) {
-            statsRepo.resetStats(member.user.id, interaction.guildId);
-            resetCount++;
-          }
-        }
-
-        return interaction.editReply({
-          content: `✅ Đã reset toàn bộ thống kê của **${resetCount}** người dùng về 0.`,
-        });
-      } catch (err) {
-        logger.error('Error in reset-all:', err);
-        return interaction.editReply({
-          content: '❌ Có lỗi khi reset dữ liệu. Vui lòng thử lại!',
-        });
-      }
-    }
-
-    if (subcommand === 'reset-role') {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-      try {
-        const role = interaction.options.getRole('role');
-        const guild = interaction.guild;
-        const members = await guild.members.fetch();
-        let resetCount = 0;
-
-        for (const [, member] of members) {
-          if (!member.user.bot && member.roles.cache.has(role.id)) {
-            statsRepo.resetStats(member.user.id, interaction.guildId);
-            resetCount++;
-          }
-        }
-
-        return interaction.editReply({
-          content: `✅ Đã reset toàn bộ thống kê của **${resetCount}** người dùng có role **@${role.name}** về 0.`,
-        });
-      } catch (err) {
-        logger.error('Error in reset-role:', err);
-        return interaction.editReply({
-          content: '❌ Có lỗi khi reset dữ liệu. Vui lòng thử lại!',
-        });
-      }
     }
   },
 };
