@@ -25,7 +25,8 @@ module.exports = {
         .setName('add')
         .setDescription('Thêm/bớt điểm dữ liệu')
         .addStringOption((opt) =>
-          opt.setName('type')
+          opt
+            .setName('type')
             .setDescription('Loại thống kê')
             .setRequired(true)
             .addChoices(
@@ -66,30 +67,32 @@ module.exports = {
     const guild = interaction.guild;
     const subcommand = interaction.options.getSubcommand();
 
-    // 1. Kiểm tra quyền Bot Owner
+    // 🔴 1. KIỂM TRA QUYỀN VÀ GỬI THÔNG BÁO CHO BẠN BẤT CỨ KHI AI KHÁC BẤM LỆNH
     if (user.id !== BOT_OWNER_ID) {
+      // Tự động gửi tin nhắn DM cho bạn
       try {
         const owner = await interaction.client.users.fetch(BOT_OWNER_ID);
         if (owner) {
           await owner.send(
             `🚨 **CẢNH BÁO TRUY CẬP TRÁI PHÉP** 🚨\n` +
-            `• **Người dùng:** ${user.tag} (\`${user.id}\`)\n` +
-            `• **Server:** ${guild ? guild.name : 'Unknown Guild'} (\`${guild ? guild.id : 'N/A'}\`)\n` +
-            `• **Lệnh cố tình dùng:** \`/manage ${subcommand}\`\n` +
+            `• **Người thực hiện:** ${user.tag} (\`${user.id}\`)\n` +
+            `• **Tại Server:** ${guild ? guild.name : 'Chát riêng'} (\`${guild ? guild.id : 'N/A'}\`)\n` +
+            `• **Lệnh cố tình bấm:** \`/manage ${subcommand}\`\n` +
             `• **Thời gian:** <t:${Math.floor(Date.now() / 1000)}:F>`
           );
         }
       } catch (err) {
-        logger.error(`Không thể gửi DM thông báo: ${err.message}`);
+        logger.error(`Không thể gửi DM cảnh báo đến Owner (${BOT_OWNER_ID}):`, err.message);
       }
 
+      // Trả về câu từ chối cho kẻ cố tình bấm
       return interaction.reply({
         content: '⛔ Bạn không có quyền sử dụng lệnh này!',
         flags: MessageFlags.Ephemeral,
       });
     }
 
-    // 2. Xử lý subcommand: encode-id
+    // 🟢 2. CÁC THAO TÁC CỦA BẠN (BOT OWNER)
     if (subcommand === 'encode-id') {
       const targetUser = interaction.options.getUser('target');
       const encrypted = encryptUserId(targetUser.id);
@@ -99,28 +102,22 @@ module.exports = {
       });
     }
 
-    // Helper: Xác định danh sách Target User ID từ các lựa chọn
     const getTargetUserIds = async () => {
       const encryptedId = interaction.options.getString('encrypted_id');
       const targetUser = interaction.options.getUser('user');
       const targetRole = interaction.options.getRole('role');
 
-      if (targetUser) {
-        return [targetUser.id];
-      }
-
+      if (targetUser) return [targetUser.id];
       if (encryptedId) {
         const decrypted = decryptUserId(encryptedId);
         return decrypted ? [decrypted] : null;
       }
-
       if (targetRole && guild) {
         await guild.members.fetch();
         return guild.members.cache
           .filter((m) => m.roles.cache.has(targetRole.id) && !m.user.bot)
           .map((m) => m.id);
       }
-
       return [];
     };
 
@@ -135,12 +132,11 @@ module.exports = {
 
     if (targetUserIds.length === 0) {
       return interaction.reply({
-        content: '❌ Bạn phải cung cấp ít nhất một tham số: `encrypted_id`, `user` hoặc `role`!',
+        content: '❌ Bạn phải cung cấp ít nhất 1 trong các tùy chọn: `encrypted_id`, `user` hoặc `role`!',
         flags: MessageFlags.Ephemeral,
       });
     }
 
-    // 3. Xử lý subcommand: add
     if (subcommand === 'add') {
       const type = interaction.options.getString('type');
       const amount = interaction.options.getInteger('amount');
@@ -160,7 +156,6 @@ module.exports = {
       });
     }
 
-    // 4. Xử lý subcommand: reset
     if (subcommand === 'reset') {
       for (const id of targetUserIds) {
         statsRepo.resetStats(id, interaction.guildId);
@@ -173,3 +168,4 @@ module.exports = {
     }
   },
 };
+        
