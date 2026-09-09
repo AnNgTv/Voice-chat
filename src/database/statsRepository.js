@@ -17,10 +17,10 @@ function incrementMessageCount(userId, guildId) {
 function incrementVoiceJoinCount(userId, guildId) {
   const db = getDb();
   const stmt = db.prepare(`
-    INSERT INTO user_stats (user_id, guild_id, total_voice_join, last_updated)
+    INSERT INTO user_stats (user_id, guild_id, voice_joins, last_updated)
     VALUES (?, ?, 1, datetime('now'))
     ON CONFLICT(user_id, guild_id) DO UPDATE SET
-      total_voice_join = total_voice_join + 1,
+      voice_joins = COALESCE(voice_joins, 0) + 1,
       last_updated = datetime('now')
   `);
   return stmt.run(userId, guildId);
@@ -36,9 +36,16 @@ function getUserStats(userId, guildId) {
 
 function getLeaderboard(guildId, type = 'messages', limit = 10) {
   const db = getDb();
-  const orderBy = type === 'voice' ? 'total_voice_join' : 'total_messages';
+  let orderBy = 'total_messages';
+  
+  if (type === 'voice') {
+    orderBy = 'total_voice_join';
+  } else if (type === 'voice_joins') {
+    orderBy = 'voice_joins';
+  }
+
   const stmt = db.prepare(`
-    SELECT user_id, total_messages, total_voice_join
+    SELECT user_id, total_messages, total_voice_join, COALESCE(voice_joins, 0) AS voice_joins
     FROM user_stats
     WHERE guild_id = ?
     ORDER BY ${orderBy} DESC
@@ -85,7 +92,7 @@ function resetStats(userId, guildId) {
   const db = getDb();
   const stmt = db.prepare(`
     UPDATE user_stats
-    SET total_messages = 0, total_voice_join = 0, last_updated = datetime('now')
+    SET total_messages = 0, total_voice_join = 0, voice_joins = 0, last_updated = datetime('now')
     WHERE user_id = ? AND guild_id = ?
   `);
   return stmt.run(userId, guildId);
@@ -95,7 +102,7 @@ function resetAllStats(guildId) {
   const db = getDb();
   const stmt = db.prepare(`
     UPDATE user_stats
-    SET total_messages = 0, total_voice_join = 0, last_updated = datetime('now')
+    SET total_messages = 0, total_voice_join = 0, voice_joins = 0, last_updated = datetime('now')
     WHERE guild_id = ?
   `);
   return stmt.run(guildId);
