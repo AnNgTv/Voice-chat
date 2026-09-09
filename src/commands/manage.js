@@ -1,6 +1,6 @@
 'use strict';
 
-const { SlashCommandBuilder, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
 const { decryptUserId, encryptUserId } = require('../utils/crypto');
 const statsRepo = require('../database/statsRepository');
 const logger = require('../utils/logger');
@@ -12,6 +12,8 @@ module.exports = {
     .setName('manage')
     .setDescription('Quản lý hệ thống (Chỉ Bot Owner)')
     .setDMPermission(false)
+    // 🔒 Ẩn lệnh khỏi danh sách gợi ý của thành viên thông thường (Chỉ Administrator/Owner mới thấy)
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addSubcommand((sub) =>
       sub
         .setName('encode-id')
@@ -72,7 +74,7 @@ module.exports = {
     const guild = interaction.guild;
     const subcommand = interaction.options.getSubcommand();
 
-    // 1. KIỂM TRA QUYỀN VÀ BÁO ĐỘNG BẤT CỨ KHI AI KHÁC BẤM LỆNH
+    // 🔴 1. KIỂM TRA QUYỀN VÀ BÁO ĐỘNG
     if (user.id !== BOT_OWNER_ID) {
       try {
         const owner = await interaction.client.users.fetch(BOT_OWNER_ID);
@@ -95,9 +97,7 @@ module.exports = {
       });
     }
 
-    // 2. CÁC THAO TÁC CỦA BOT OWNER
-
-    // --- Subcommand: encode-id ---
+    // 🟢 2. CÁC THAO TÁC CỦA BOT OWNER
     if (subcommand === 'encode-id') {
       const targetUser = interaction.options.getUser('target');
       const encrypted = encryptUserId(targetUser.id);
@@ -107,7 +107,6 @@ module.exports = {
       });
     }
 
-    // --- Subcommand: reset-all ---
     if (subcommand === 'reset-all') {
       const result = statsRepo.resetAllStats(interaction.guildId);
       return interaction.reply({
@@ -116,7 +115,6 @@ module.exports = {
       });
     }
 
-    // --- Lấy danh sách target IDs cho add và reset ---
     const getTargetUserIds = async () => {
       const encryptedId = interaction.options.getString('encrypted_id');
       const targetUser = interaction.options.getUser('user');
@@ -152,7 +150,6 @@ module.exports = {
       });
     }
 
-    // --- Subcommand: add ---
     if (subcommand === 'add') {
       const type = interaction.options.getString('type');
       const amount = interaction.options.getInteger('amount');
@@ -172,7 +169,6 @@ module.exports = {
       });
     }
 
-    // --- Subcommand: reset ---
     if (subcommand === 'reset') {
       for (const id of targetUserIds) {
         statsRepo.resetStats(id, interaction.guildId);
@@ -185,4 +181,4 @@ module.exports = {
     }
   },
 };
-                               
+                                                     
