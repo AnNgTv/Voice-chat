@@ -1,28 +1,39 @@
 'use strict';
 
-const { Events } = require('discord.js');
-const { incrementVoiceJoinCount } = require('../database/statsRepository');
+const statsRepo = require('../database/statsRepository');
 const logger = require('../utils/logger');
 
+// Lưu thời gian tham gia voice của user: Map<"userId-guildId", timestamp>
+const voiceSessions = new Map();
+
 module.exports = {
-  name: Events.VoiceStateUpdate,
+  name: 'voiceStateUpdate',
   async execute(oldState, newState) {
-    const member = newState.member || oldState.member;
-    if (!member || member.user.bot) return;
+    const userId = newState.id || oldState.id;
+    const guildId = newState.guild.id || oldState.guild.id;
+    const sessionKey = `${userId}-${guildId}`;
 
-    // A "connection" is counted when the user goes from NOT being in any
-    // voice channel to being in one (i.e. oldState.channelId is null and
-    // newState.channelId is set). Switching between channels while already
-    // connected, muting, deafening, etc. do NOT count as a new join.
-    const wasDisconnected = oldState.channelId === null;
-    const isNowConnected = newState.channelId !== null;
+    // 1. Người dùng tham gia kênh voice
+    if (!oldState.channelId && newState.channelId) {
+      voiceSessions.set(sessionKey, Date.now());
+      return;
+    }
 
-    if (wasDisconnected && isNowConnected) {
-      try {
-        incrementVoiceJoinCount(member.id, newState.guild.id);
-        logger.debug(`+1 voice join for ${member.user.tag} in guild ${newState.guild.id}`);
-      } catch (err) {
-        logger.error('Failed to record voice join stat:', err.message);
+    // 2. Người dùng rời kênh voice
+    if (oldState.channelId && !newState.channelId) {
+      const joinTime = voiceSessions.get(sessionKey);
+      if (joinTime) {
+        const durationMs = Date.now() - joinTime;
+        const minutes = Math.floor(durationMs / (1000 * 60)); // Quy đổi ra phút
+
+        if (minutes > 0) {
+          try {
+            statsRepo.updateStats(userId, guildId, { messages: 0, voiceTime: minutes });
+          } catch (err) {
+            logger.error(`Lỗi khi cập nhật thời gian voice cho ${userId}:`, err.message);
+          }
+        }
+        voiceSessions.delete(sessionKey);
       }
     }
   },
