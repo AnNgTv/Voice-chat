@@ -72,7 +72,7 @@ module.exports = {
     const guild = interaction.guild;
     const subcommand = interaction.options.getSubcommand();
 
-    // 🔴 1. KIỂM TRA QUYỀN VÀ BÁO ĐỘNG BẤT CỨ KHI AI KHÁC BẤM LỆNH
+    // 1. KIỂM TRA QUYỀN VÀ BÁO ĐỘNG BẤT CỨ KHI AI KHÁC BẤM LỆNH
     if (user.id !== BOT_OWNER_ID) {
       try {
         const owner = await interaction.client.users.fetch(BOT_OWNER_ID);
@@ -95,7 +95,7 @@ module.exports = {
       });
     }
 
-    // 🟢 2. CÁC THAO TÁC CỦA BOT OWNER
+    // 2. CÁC THAO TÁC CỦA BOT OWNER
 
     // --- Subcommand: encode-id ---
     if (subcommand === 'encode-id') {
@@ -185,4 +185,4 @@ module.exports = {
     }
   },
 };
-          
+                               
