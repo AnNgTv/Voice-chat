@@ -23,10 +23,7 @@ module.exports = {
   async execute(interaction) {
     const type = interaction.options.getString('type');
     const guildId = interaction.guildId;
-    
-    // Tìm kiếm đúng trường trong Database
-    const fetchType = type === 'voice_joins' ? 'voice_joins' : type;
-    const leaderboardData = statsRepo.getLeaderboard(guildId, fetchType, 10);
+    const leaderboardData = statsRepo.getLeaderboard(guildId, type, 10);
 
     if (!leaderboardData || leaderboardData.length === 0) {
       return interaction.reply({
@@ -52,9 +49,9 @@ module.exports = {
         
         let value = `${row.total_messages} tin nhắn`;
         if (type === 'voice') {
-          value = formatMinecraftTime(row.total_voice_join); // Định dạng kiểu Minecraft
+          value = formatMinecraftTime(row.total_voice_join);
         } else if (type === 'voice_joins') {
-          value = `${row.total_voice_join || 0} lần vào`;
+          value = `${row.voice_joins} lần vào`;
         }
 
         return `${medal} <@${row.user_id}> — **${value}**`;
