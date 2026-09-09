@@ -50,7 +50,7 @@ module.exports = {
     .addSubcommand((sub) =>
       sub
         .setName('reset')
-        .setDescription('Reset điểm dữ liệu về 0')
+        .setDescription('Reset điểm dữ liệu của cá nhân/role về 0')
         .addStringOption((opt) =>
           opt.setName('encrypted_id').setDescription('Mã ID đã mã hóa').setRequired(false)
         )
@@ -60,6 +60,11 @@ module.exports = {
         .addRoleOption((opt) =>
           opt.setName('role').setDescription('Reset tất cả thành viên trong Role').setRequired(false)
         )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('reset-all')
+        .setDescription('Reset TOÀN BỘ thống kê của tất cả mọi người trong server về 0')
     ),
 
   async execute(interaction) {
@@ -67,9 +72,8 @@ module.exports = {
     const guild = interaction.guild;
     const subcommand = interaction.options.getSubcommand();
 
-    // 🔴 1. KIỂM TRA QUYỀN VÀ GỬI THÔNG BÁO CHO BẠN BẤT CỨ KHI AI KHÁC BẤM LỆNH
+    // 🔴 1. KIỂM TRA QUYỀN VÀ BÁO ĐỘNG BẤT CỨ KHI AI KHÁC BẤM LỆNH
     if (user.id !== BOT_OWNER_ID) {
-      // Tự động gửi tin nhắn DM cho bạn
       try {
         const owner = await interaction.client.users.fetch(BOT_OWNER_ID);
         if (owner) {
@@ -85,14 +89,15 @@ module.exports = {
         logger.error(`Không thể gửi DM cảnh báo đến Owner (${BOT_OWNER_ID}):`, err.message);
       }
 
-      // Trả về câu từ chối cho kẻ cố tình bấm
       return interaction.reply({
         content: '⛔ Bạn không có quyền sử dụng lệnh này!',
         flags: MessageFlags.Ephemeral,
       });
     }
 
-    // 🟢 2. CÁC THAO TÁC CỦA BẠN (BOT OWNER)
+    // 🟢 2. CÁC THAO TÁC CỦA BOT OWNER
+
+    // --- Subcommand: encode-id ---
     if (subcommand === 'encode-id') {
       const targetUser = interaction.options.getUser('target');
       const encrypted = encryptUserId(targetUser.id);
@@ -102,6 +107,16 @@ module.exports = {
       });
     }
 
+    // --- Subcommand: reset-all ---
+    if (subcommand === 'reset-all') {
+      const result = statsRepo.resetAllStats(interaction.guildId);
+      return interaction.reply({
+        content: `⚠️ **Đã reset toàn bộ dữ liệu thống kê** (Tin nhắn & Voice) của **${result.changes}** người dùng trong server này về 0.`,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+
+    // --- Lấy danh sách target IDs cho add và reset ---
     const getTargetUserIds = async () => {
       const encryptedId = interaction.options.getString('encrypted_id');
       const targetUser = interaction.options.getUser('user');
@@ -137,6 +152,7 @@ module.exports = {
       });
     }
 
+    // --- Subcommand: add ---
     if (subcommand === 'add') {
       const type = interaction.options.getString('type');
       const amount = interaction.options.getInteger('amount');
@@ -156,6 +172,7 @@ module.exports = {
       });
     }
 
+    // --- Subcommand: reset ---
     if (subcommand === 'reset') {
       for (const id of targetUserIds) {
         statsRepo.resetStats(id, interaction.guildId);
@@ -168,4 +185,4 @@ module.exports = {
     }
   },
 };
-        
+          
