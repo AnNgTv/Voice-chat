@@ -153,18 +153,7 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-// 7. Lắng nghe tin nhắn để tính tổng số tin nhắn (Message Stats)
-client.on('messageCreate', async (message) => {
-  if (message.author.bot || !message.guild) return;
-
-  try {
-    await statsRepo.incrementMessageCount(message.author.id, message.guild.id);
-  } catch (err) {
-    logger.error('Lỗi khi tăng đếm tin nhắn:', err.message);
-  }
-});
-
-// 8. Khởi động hệ thống (Kết nối PostgreSQL -> Load Events -> Login Bot)
+// 7. Khởi động hệ thống (Kết nối PostgreSQL -> Load Events -> Login Bot)
 async function startBot() {
   try {
     // Kết nối và tạo bảng CSDL PostgreSQL
@@ -184,4 +173,3 @@ async function startBot() {
 }
 
 startBot();
-                                        
