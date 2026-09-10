@@ -56,9 +56,39 @@ async function upsertServerStats(guildId) {
   );
 }
 
+// Hàm ghi nhận tin nhắn (Cộng dồn +1 mỗi tin nhắn)
+async function recordMessage(userId, guildId) {
+  const p = getPool();
+  await p.query(
+    `INSERT INTO user_stats (user_id, guild_id, total_messages, last_updated)
+     VALUES ($1, $2, 1, CURRENT_TIMESTAMP)
+     ON CONFLICT (user_id, guild_id)
+     DO UPDATE SET 
+       total_messages = user_stats.total_messages + 1,
+       last_updated = CURRENT_TIMESTAMP;`,
+    [userId, guildId]
+  );
+}
+
+// Hàm ghi nhận lượt vào Voice (Cộng dồn +1 mỗi lần join)
+async function recordVoiceJoin(userId, guildId) {
+  const p = getPool();
+  await p.query(
+    `INSERT INTO user_stats (user_id, guild_id, voice_joins, last_updated)
+     VALUES ($1, $2, 1, CURRENT_TIMESTAMP)
+     ON CONFLICT (user_id, guild_id)
+     DO UPDATE SET 
+       voice_joins = user_stats.voice_joins + 1,
+       last_updated = CURRENT_TIMESTAMP;`,
+    [userId, guildId]
+  );
+}
+
 module.exports = { 
   getPool, 
   getDb: getPool, 
   initDb,
-  upsertServerStats
+  upsertServerStats,
+  recordMessage,
+  recordVoiceJoin
 };
