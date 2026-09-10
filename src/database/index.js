@@ -46,8 +46,19 @@ async function initDb() {
   `);
 }
 
+async function upsertServerStats(guildId) {
+  const p = getPool();
+  await p.query(
+    `INSERT INTO server_stats (guild_id)
+     VALUES ($1)
+     ON CONFLICT (guild_id) DO NOTHING;`,
+    [guildId]
+  );
+}
+
 module.exports = { 
   getPool, 
   getDb: getPool, 
-  initDb 
+  initDb,
+  upsertServerStats
 };
