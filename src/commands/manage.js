@@ -12,7 +12,6 @@ module.exports = {
     .setName('manage')
     .setDescription('Quản lý hệ thống (Chỉ Bot Owner)')
     .setDMPermission(false)
-    // 🔒 Ẩn lệnh khỏi danh sách gợi ý của thành viên thông thường (Chỉ Administrator/Owner mới thấy)
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addSubcommand((sub) =>
       sub
@@ -33,7 +32,8 @@ module.exports = {
             .setRequired(true)
             .addChoices(
               { name: 'Tin nhắn (Messages)', value: 'messages' },
-              { name: 'Voice (Phút)', value: 'voice' }
+              { name: 'Thời gian Voice (Giây)', value: 'voice' },
+              { name: 'Số lần vào Voice (Joins)', value: 'voice_joins' }
             )
         )
         .addIntegerOption((opt) =>
@@ -74,7 +74,7 @@ module.exports = {
     const guild = interaction.guild;
     const subcommand = interaction.options.getSubcommand();
 
-    // 🔴 1. KIỂM TRA QUYỀN VÀ BÁO ĐỘNG
+    // 1. KIỂM TRA QUYỀN VÀ BÁO ĐỘNG
     if (user.id !== BOT_OWNER_ID) {
       try {
         const owner = await interaction.client.users.fetch(BOT_OWNER_ID);
@@ -97,7 +97,7 @@ module.exports = {
       });
     }
 
-    // 🟢 2. CÁC THAO TÁC CỦA BOT OWNER
+    // 2. XỬ LÝ SUBCOMMANDS
     if (subcommand === 'encode-id') {
       const targetUser = interaction.options.getUser('target');
       const encrypted = encryptUserId(targetUser.id);
@@ -150,25 +150,40 @@ module.exports = {
       });
     }
 
+    // Subcommand: add
     if (subcommand === 'add') {
       const type = interaction.options.getString('type');
       const amount = interaction.options.getInteger('amount');
-      const msgAdd = type === 'messages' ? amount : 0;
-      const voiceAdd = type === 'voice' ? amount : 0;
 
       for (const id of targetUserIds) {
-        statsRepo.updateStats(id, interaction.guildId, {
-          messages: msgAdd,
-          voiceTime: voiceAdd,
-        });
+        if (type === 'messages') {
+          statsRepo.updateStats(id, interaction.guildId, { messages: amount, voiceTime: 0 });
+        } else if (type === 'voice') {
+          statsRepo.updateStats(id, interaction.guildId, { messages: 0, voiceTime: amount });
+        } else if (type === 'voice_joins') {
+          // Thêm/bớt số lần vào voice
+          const db = require('../database').getDb();
+          db.prepare(`
+            INSERT INTO user_stats (user_id, guild_id, voice_joins, last_updated)
+            VALUES (?, ?, MAX(0, ?), datetime('now'))
+            ON CONFLICT(user_id, guild_id) DO UPDATE SET
+              voice_joins = MAX(0, COALESCE(voice_joins, 0) + excluded.voice_joins),
+              last_updated = datetime('now')
+          `).run(id, interaction.guildId, amount);
+        }
       }
 
+      let typeLabel = 'tin nhắn';
+      if (type === 'voice') typeLabel = 'giây voice';
+      if (type === 'voice_joins') typeLabel = 'lần vào voice';
+
       return interaction.reply({
-        content: `✅ Đã cập nhật **${amount}** (${type === 'messages' ? 'tin nhắn' : 'phút voice'}) cho **${targetUserIds.length}** người dùng.`,
+        content: `✅ Đã cập nhật **${amount > 0 ? '+' : ''}${amount}** (${typeLabel}) cho **${targetUserIds.length}** người dùng.`,
         flags: MessageFlags.Ephemeral,
       });
     }
 
+    // Subcommand: reset
     if (subcommand === 'reset') {
       for (const id of targetUserIds) {
         statsRepo.resetStats(id, interaction.guildId);
@@ -181,4 +196,4 @@ module.exports = {
     }
   },
 };
-                                                     
+          
