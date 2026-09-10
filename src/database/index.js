@@ -39,20 +39,22 @@ async function initDb() {
 
     CREATE TABLE IF NOT EXISTS server_stats (
       guild_id TEXT PRIMARY KEY,
-      total_messages INT DEFAULT 0,
-      total_voice_sessions INT DEFAULT 0,
+      server_created_at TIMESTAMP,
+      total_members INT DEFAULT 0,
       last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
 }
 
-async function upsertServerStats(guildId) {
+async function upsertServerStats(guildId, createdAt, memberCount) {
   const p = getPool();
   await p.query(
-    `INSERT INTO server_stats (guild_id)
-     VALUES ($1)
-     ON CONFLICT (guild_id) DO NOTHING;`,
-    [guildId]
+    `INSERT INTO server_stats (guild_id, server_created_at, total_members, last_updated)
+     VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+     ON CONFLICT (guild_id) DO UPDATE SET
+       total_members = $3,
+       last_updated = CURRENT_TIMESTAMP;`,
+    [guildId, createdAt, memberCount]
   );
 }
 
