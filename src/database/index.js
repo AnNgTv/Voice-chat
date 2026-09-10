@@ -10,13 +10,15 @@ function getPool() {
 
     if (!connectionString) {
       throw new Error(
-        'Thieu biến môi trường DATABASE_URL! Hãy thêm biến DATABASE_URL vào Railway hoặc file .env.'
+        '❌ CHƯA CÓ DATABASE_URL! Hãy kiểm tra lại file .env hoặc thiết lập Variables trên Railway.'
       );
     }
 
     pool = new Pool({
       connectionString,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      ssl: connectionString.includes('localhost') || connectionString.includes('127.0.0.1')
+        ? false
+        : { rejectUnauthorized: false },
     });
   }
   return pool;
@@ -44,4 +46,8 @@ async function initDb() {
   `);
 }
 
-module.exports = { getPool, initDb };
+module.exports = { 
+  getPool, 
+  getDb: getPool, 
+  initDb 
+};
