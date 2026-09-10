@@ -3,42 +3,40 @@
 const statsRepo = require('../database/statsRepository');
 const logger = require('../utils/logger');
 
-// Lưu mốc thời gian bắt đầu vào voice của từng user (userId-guildId -> timestamp)
+// Map dùng chung lưu mốc thời gian (userId-guildId -> timestamp)
 const voiceSessions = new Map();
 
 module.exports = {
   name: 'voiceStateUpdate',
-  voiceSessions, // Export để leaderboard dùng tính realtime
+  voiceSessions,
   async execute(oldState, newState) {
-    const userId = newState.id || oldState.id;
-    const guildId = newState.guild.id || oldState.guild.id;
-    const sessionKey = `${userId}-${guildId}`;
+    try {
+      const userId = newState.id || oldState.id;
+      const guildId = newState.guild?.id || oldState.guild?.id;
+      if (!guildId || !userId) return;
 
-    // 1. Tham gia kênh voice mới
-    if (!oldState.channelId && newState.channelId) {
-      voiceSessions.set(sessionKey, Date.now());
-      try {
+      const sessionKey = `${userId}-${guildId}`;
+
+      // 1. Tham gia kênh voice mới
+      if (!oldState.channelId && newState.channelId) {
+        voiceSessions.set(sessionKey, Date.now());
         statsRepo.incrementVoiceJoinCount(userId, guildId);
-      } catch (err) {
-        logger.error(`Lỗi tăng số lần vào voice cho ${userId}:`, err.message);
+        return;
       }
-      return;
-    }
 
-    // 2. Rời khỏi voice
-    if (oldState.channelId && !newState.channelId) {
-      const joinTime = voiceSessions.get(sessionKey);
-      if (joinTime) {
-        const durationSeconds = Math.floor((Date.now() - joinTime) / 1000);
-        if (durationSeconds > 0) {
-          try {
+      // 2. Rời khỏi voice
+      if (oldState.channelId && !newState.channelId) {
+        const joinTime = voiceSessions.get(sessionKey);
+        if (joinTime) {
+          const durationSeconds = Math.floor((Date.now() - joinTime) / 1000);
+          if (durationSeconds > 0) {
             statsRepo.updateStats(userId, guildId, { messages: 0, voiceTime: durationSeconds });
-          } catch (err) {
-            logger.error(`Lỗi cập nhật thời gian voice cho ${userId}:`, err.message);
           }
+          voiceSessions.delete(sessionKey);
         }
-        voiceSessions.delete(sessionKey);
       }
+    } catch (err) {
+      logger.error('Lỗi sự kiện voiceStateUpdate:', err.message);
     }
   },
 };
