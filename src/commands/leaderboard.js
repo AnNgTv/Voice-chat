@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { getPool } = require('../database/index');
-const { formatDuration } = require('../utils/formatTime');
+const { formatMinecraftTime } = require('../utils/formatTime');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -14,7 +14,7 @@ module.exports = {
         .addChoices(
           { name: 'Tin nhắn', value: 'messages' },
           { name: 'Lượt join voice', value: 'voice_joins' },
-          { name: 'Thời gian voice (phút)', value: 'voice_time' }
+          { name: 'Thời gian voice', value: 'voice_time' }
         )
     )
     .addIntegerOption((opt) =>
@@ -41,7 +41,7 @@ module.exports = {
         displayType = 'Lượt join voice';
       } else if (type === 'voice_time') {
         orderBy = 'total_voice_join';
-        displayType = 'Thời gian voice (phút)';
+        displayType = 'Thời gian voice';
       }
 
       const result = await pool.query(
@@ -70,7 +70,9 @@ module.exports = {
           } else if (type === 'voice_joins') {
             stat = `**${user.voice_joins || 0}** lượt join`;
           } else if (type === 'voice_time') {
-            stat = `**${user.total_voice_join || 0}** phút`;
+            // Chuyển đổi phút sang giây (total_voice_join lưu dưới dạng phút)
+            const totalSeconds = (user.total_voice_join || 0) * 60;
+            stat = `**${formatMinecraftTime(totalSeconds)}**`;
           }
           return `**#${index + 1}** <@${user.user_id}> - ${stat}`;
         })
