@@ -9,8 +9,14 @@ module.exports = {
   async execute(interaction) {
     try {
       const pool = getPool();
+      
+      // Lấy danh sách tách biệt từng user_id trong server
       const result = await pool.query(
-        'SELECT user_id, total_messages, voice_joins FROM user_stats WHERE guild_id = $1 ORDER BY total_messages DESC LIMIT 10',
+        `SELECT user_id, total_messages, voice_joins 
+         FROM user_stats 
+         WHERE guild_id = $1 
+         ORDER BY total_messages DESC, voice_joins DESC 
+         LIMIT 10`,
         [interaction.guildId]
       );
 
@@ -25,7 +31,7 @@ module.exports = {
 
       const leaderboardList = leaderboardData
         .map((user, index) => {
-          return `**#${index + 1}** <@${user.user_id}> - **${user.total_messages || 0}** tin nhắn | **${user.voice_joins || 0}** lượt vào voice`;
+          return `**#${index + 1}** <@${user.user_id}> - **${user.total_messages || 0}** tin nhắn | **${user.voice_joins || 0}** lượt voice`;
         })
         .join('\n');
 
