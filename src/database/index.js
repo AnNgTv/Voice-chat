@@ -78,7 +78,7 @@ async function recordVoiceJoin(userId, guildId) {
      VALUES ($1, $2, 1, CURRENT_TIMESTAMP)
      ON CONFLICT (user_id, guild_id)
      DO UPDATE SET 
-       voice_joins = user_stats.voice_joins + 1,
+       voice_joins = COALESCE(user_stats.voice_joins, 0) + 1,
        last_updated = CURRENT_TIMESTAMP;`,
     [userId, guildId]
   );
