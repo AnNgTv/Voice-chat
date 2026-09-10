@@ -7,6 +7,13 @@ let pool = null;
 function getPool() {
   if (!pool) {
     const connectionString = process.env.DATABASE_URL;
+
+    if (!connectionString) {
+      throw new Error(
+        'Thieu biến môi trường DATABASE_URL! Hãy thêm biến DATABASE_URL vào Railway hoặc file .env.'
+      );
+    }
+
     pool = new Pool({
       connectionString,
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
