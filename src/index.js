@@ -1,92 +1,187 @@
 'use strict';
 
 require('dotenv').config();
+const {
+  Client,
+  GatewayIntentBits,
+  REST,
+  Routes,
+  Collection,
+} = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const { Client, GatewayIntentBits, Partials, Collection, Events } = require('discord.js');
+
+const { initDb } = require('./database');
+const statsRepo = require('./database/statsRepository');
 const logger = require('./utils/logger');
+const { voiceSessions } = require('./events/voiceStateUpdate');
 
-const { DISCORD_TOKEN } = process.env;
-
-if (!DISCORD_TOKEN) {
-  logger.error('DISCORD_TOKEN is not set. Copy .env.example to .env and fill it in.');
-  process.exit(1);
-}
-
+// 1. Khởi tạo Discord Client với đầy đủ Intents cần thiết
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent, // required to reliably react to messageCreate content-independent counting
+    GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildVoiceStates,
-    GatewayIntentBits.GuildMembers, // needed for accurate memberCount / member tagging
+    GatewayIntentBits.GuildMembers,
   ],
-  partials: [Partials.Channel],
 });
 
 client.commands = new Collection();
 
-// ---- Load slash commands ----
-const commandsPath = path.join(__dirname, 'commands');
-const commandFiles = fs.readdirSync(commandsPath).filter((file) => file.endsWith('.js'));
+// 2. Hàm lưu khẩn cấp toàn bộ voice đang treo vào DB khi Bot tắt/Restart (Tránh mất điểm)
+async function flushVoiceSessions() {
+  if (!voiceSessions || voiceSessions.size === 0) return;
+  logger.info('🔄 Đang đồng bộ dữ liệu Voice vào Database trước khi tắt/redeploy...');
+  const now = Date.now();
 
-for (const file of commandFiles) {
-  const command = require(path.join(commandsPath, file));
-  if ('data' in command && 'execute' in command) {
-    client.commands.set(command.data.name, command);
-    logger.debug(`Loaded command: ${command.data.name}`);
-  } else {
-    logger.warn(`Command file ${file} is missing "data" or "execute" — skipped.`);
+  for (const [sessionKey, joinTime] of voiceSessions.entries()) {
+    const [userId, guildId] = sessionKey.split('-');
+    const durationSeconds = Math.floor((now - joinTime) / 1000);
+
+    if (durationSeconds > 0 && userId && guildId) {
+      try {
+        await statsRepo.updateStats(userId, guildId, {
+          messages: 0,
+          voiceTime: durationSeconds,
+        });
+      } catch (err) {
+        logger.error(`Lỗi lưu voice khẩn cấp cho user ${userId}:`, err.message);
+      }
+    }
   }
+  voiceSessions.clear();
+  logger.info('✅ Đã lưu xong dữ liệu Voice!');
 }
 
-// ---- Load event handlers ----
-const eventsPath = path.join(__dirname, 'events');
-const eventFiles = fs.readdirSync(eventsPath).filter((file) => file.endsWith('.js'));
+// Bắt các sự kiện tắt process từ Railway
+process.on('SIGTERM', async () => {
+  await flushVoiceSessions();
+  process.exit(0);
+});
 
-for (const file of eventFiles) {
-  const event = require(path.join(eventsPath, file));
-  if (event.once) {
-    client.once(event.name, (...args) => event.execute(...args, client));
-  } else {
-    client.on(event.name, (...args) => event.execute(...args, client));
-  }
-  logger.debug(`Loaded event: ${event.name}`);
-}
+process.on('SIGINT', async () => {
+  await flushVoiceSessions();
+  process.exit(0);
+});
 
-// ---- Slash command interaction dispatcher ----
-client.on(Events.InteractionCreate, async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
+// 3. Hàm Load tất cả Slash Commands trong thư mục src/commands
+function loadCommands() {
+  const commandsPath = path.join(__dirname, 'commands');
+  if (!fs.existsSync(commandsPath)) return [];
 
-  const command = interaction.client.commands.get(interaction.commandName);
-  if (!command) {
-    logger.warn(`Received unknown command: ${interaction.commandName}`);
-    return;
-  }
+  const commandFiles = fs
+    .readdirSync(commandsPath)
+    .filter((file) => file.endsWith('.js'));
+  const commandsData = [];
 
-  try {
-    await command.execute(interaction);
-  } catch (err) {
-    logger.error(`Error executing command "${interaction.commandName}":`, err);
-    const errorPayload = { content: 'There was an error while executing this command.', ephemeral: true };
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(errorPayload).catch(() => {});
+  for (const file of commandFiles) {
+    const filePath = path.join(commandsPath, file);
+    const command = require(filePath);
+
+    if ('data' in command && 'execute' in command) {
+      client.commands.set(command.data.name, command);
+      commandsData.push(command.data.toJSON());
     } else {
-      await interaction.reply(errorPayload).catch(() => {});
+      logger.warn(`Cảnh báo: Lệnh tại ${filePath} thiếu thuộc tính "data" hoặc "execute".`);
+    }
+  }
+  return commandsData;
+}
+
+// 4. Hàm Load tất cả Events trong thư mục src/events
+function loadEvents() {
+  const eventsPath = path.join(__dirname, 'events');
+  if (!fs.existsSync(eventsPath)) return;
+
+  const eventFiles = fs
+    .readdirSync(eventsPath)
+    .filter((file) => file.endsWith('.js'));
+
+  for (const file of eventFiles) {
+    const filePath = path.join(eventsPath, file);
+    const event = require(filePath);
+
+    if (event.once) {
+      client.once(event.name, (...args) => event.execute(...args));
+    } else {
+      client.on(event.name, (...args) => event.execute(...args));
+    }
+  }
+}
+
+// 5. Sự kiện khi Bot đã sẵn sàng hoạt động (Ready)
+client.once('ready', async () => {
+  logger.info(`🤖 Bot đã đăng nhập thành công với tên: ${client.user.tag}`);
+
+  // Đăng ký Slash Commands lên Discord API (Global Commands)
+  const commandsData = loadCommands();
+  if (commandsData.length > 0) {
+    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+    try {
+      logger.info('🚀 Đang đăng ký Slash Commands (Global)...');
+      await rest.put(Routes.applicationCommands(client.user.id), {
+        body: commandsData,
+      });
+      logger.info('✅ Đã đăng ký thành công các Slash Commands!');
+    } catch (error) {
+      logger.error('❌ Lỗi khi đăng ký Slash Commands:', error);
     }
   }
 });
 
-// ---- Global error safety nets ----
-process.on('unhandledRejection', (reason) => {
-  logger.error('Unhandled promise rejection:', reason);
+// 6. Xử lý khi người dùng tương tác với Slash Command
+client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+
+  const command = client.commands.get(interaction.commandName);
+  if (!command) return;
+
+  try {
+    await command.execute(interaction);
+  } catch (error) {
+    logger.error(`Lỗi khi thực thi lệnh /${interaction.commandName}:`, error);
+    const errorMessage = {
+      content: '❌ Đã xảy ra lỗi khi thực hiện lệnh này!',
+      ephemeral: true,
+    };
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp(errorMessage);
+    } else {
+      await interaction.reply(errorMessage);
+    }
+  }
 });
 
-process.on('uncaughtException', (err) => {
-  logger.error('Uncaught exception:', err);
+// 7. Lắng nghe tin nhắn để tính tổng số tin nhắn (Message Stats)
+client.on('messageCreate', async (message) => {
+  if (message.author.bot || !message.guild) return;
+
+  try {
+    await statsRepo.incrementMessageCount(message.author.id, message.guild.id);
+  } catch (err) {
+    logger.error('Lỗi khi tăng đếm tin nhắn:', err.message);
+  }
 });
 
-client.login(DISCORD_TOKEN).catch((err) => {
-  logger.error('Failed to log in to Discord. Check your DISCORD_TOKEN.', err.message);
-  process.exit(1);
-});
+// 8. Khởi động hệ thống (Kết nối PostgreSQL -> Load Events -> Login Bot)
+async function startBot() {
+  try {
+    // Kết nối và tạo bảng CSDL PostgreSQL
+    logger.info('📦 Đang khởi tạo kết nối PostgreSQL Database...');
+    await initDb();
+    logger.info('✅ Khởi tạo PostgreSQL Database thành công!');
+
+    // Load các sự kiện (Voice, Message, ...)
+    loadEvents();
+
+    // Đăng nhập vào Discord
+    await client.login(process.env.DISCORD_TOKEN);
+  } catch (error) {
+    logger.error('💥 Không thể khởi động Bot:', error);
+    process.exit(1);
+  }
+}
+
+startBot();
+                                        
