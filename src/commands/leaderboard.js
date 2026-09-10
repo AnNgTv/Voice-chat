@@ -22,14 +22,17 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    // Trả lời hoãn (defer) để có đủ thời gian fetch danh sách thành viên từ Discord API
+    await interaction.deferReply();
+
     const type = interaction.options.getString('type');
     const guildId = interaction.guildId;
+    const guild = interaction.guild;
     const leaderboardData = statsRepo.getLeaderboard(guildId, type, 10);
 
     if (!leaderboardData || leaderboardData.length === 0) {
-      return interaction.reply({
+      return interaction.editReply({
         content: '📊 Chưa có dữ liệu thống kê cho máy chủ này.',
-        ephemeral: true,
       });
     }
 
@@ -70,9 +73,11 @@ module.exports = {
       formattedList.sort((a, b) => b.voiceTime - a.voiceTime);
     }
 
-    const outputString = formattedList
-      .map((item, index) => {
-        const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**#${index + 1}**`;
+    // Lấy thông tin hiển thị (Tag/Nickname) chính xác cho từng ID
+    const formattedRows = await Promise.all(
+      formattedList.map(async (item, index) => {
+        const medal =
+          index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `**#${index + 1}**`;
         let value = `${item.messages} tin nhắn`;
 
         if (type === 'voice') {
@@ -81,16 +86,38 @@ module.exports = {
           value = `${item.voiceJoins || 0} lần vào`;
         }
 
-        return `${medal} <@${item.userId}> — **${value}**`;
+        let userDisplay = `<@${item.userId}>`;
+        if (guild) {
+          try {
+            // Lấy thông tin thành viên từ Guild
+            const member = await guild.members.fetch(item.userId);
+            if (member) {
+              userDisplay = `**${member.displayName}** (<@${item.userId}>)`;
+            }
+          } catch (e) {
+            // Nếu người dùng đã rời server, lấy tên tài khoản Discord chung
+            try {
+              const user = await interaction.client.users.fetch(item.userId);
+              if (user) {
+                userDisplay = `**${user.username}** *(Đã rời server)*`;
+              }
+            } catch (err) {
+              // Bỏ qua nếu ID không khả dụng
+            }
+          }
+        }
+
+        return `${medal} ${userDisplay} — **${value}**`;
       })
-      .join('\n');
+    );
 
     const embed = new EmbedBuilder()
       .setTitle(title)
       .setColor(color)
-      .setDescription(outputString)
+      .setDescription(formattedRows.join('\n'))
       .setTimestamp();
 
-    return interaction.reply({ embeds: [embed] });
+    return interaction.editReply({ embeds: [embed] });
   },
 };
+      
