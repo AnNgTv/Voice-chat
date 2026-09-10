@@ -1,7 +1,7 @@
 'use strict';
 
 const { Events } = require('discord.js');
-const { getDb } = require('../database/db');
+const { getDb } = require('../database/index');
 const { upsertServerStats } = require('../database/statsRepository');
 const logger = require('../utils/logger');
 
